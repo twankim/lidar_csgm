@@ -11,6 +11,7 @@
 #       vel:  The velodyne binary file (timestamp.bin)
 #       img:  The undistorted image (timestamp.tiff)
 #   cam_num:  The index (0 through 5) of the camera
+#    d_path:  The path for nclt data
 #
 
 import sys
@@ -18,9 +19,10 @@ import struct
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import numpy as np
+import os
 import cv2
+from scipy import ndimage
 
-#from undistort import *
 from undistort_lidar import Undistort
 
 def convert(x_s, y_s, z_s):
@@ -122,6 +124,43 @@ def project_vel_to_cam(hits, cam_num):
 
     return hits_im
 
+def points_to_image(points,im_shape):
+    im_lidar = np.zeros(im_shape,dtype=np.uint8)
+    for idx in xrange(points.shape[1]):
+        x,y = int(points[0,idx]),int(points[1,idx])
+        z_val = 1-min(points[2,idx]/100.0,1.0)
+        im_lidar[y,x] = np.round(z_val*255.0).astype('uint8')
+    return im_lidar
+
+def plot_imlidar(image,points,points_lr):
+    # Plot with image
+    plt.figure(1)
+    plt.subplot(1,2,1)
+    plt.imshow(ndimage.rotate(image,270))
+    plt.hold(True)
+    plt.scatter(1231-points[1,:],
+                points[0,:],
+                c=points[2,:],
+                s=5,
+                linewidths=0)
+    plt.xlim(0, 1232)
+    plt.ylim(1616, 0)
+    plt.title('32-layer Laser')
+
+    plt.subplot(1,2,2)
+    plt.imshow(ndimage.rotate(image,270))
+    plt.hold(True)
+    plt.scatter(1231-points_lr[1,:],
+                points_lr[0,:],
+                c=points_lr[2,:],
+                s=5,
+                linewidths=0)
+    plt.xlim(0, 1232)
+    plt.ylim(1616, 0)
+    plt.title('8-layer Laser')
+
+    plt.show()
+
 def main(args):
 
     if len(args)<4:
@@ -139,17 +178,14 @@ To use:
         return 1
 
     if len(args)>4:
-        # Use specified path
-        d_path = args[4]
+        d_path = args[4] # Use specified path
     else:
-        # Use current path
-        d_path = os.getcwd()
+        d_path = os.getcwd() # Use current path
 
     # Load velodyne points
     hits_body,hits_info = load_vel_hits(os.path.join(d_path,args[1]))
 
     # Load image
-    # image = mpimg.imread(args[2])
     image = cv2.imread(os.path.join(d_path,args[2]))[:,:,(2,1,0)]
 
     cam_num = int(args[3])
@@ -173,50 +209,23 @@ To use:
     points_lr = points[:,idx_lowres] # Low resolution (8layser)
     points = points[:,idx_incam]
 
-    im_lidar = np.zeros(np.shape(image)[0:2],dtype=np.uint8)
-    for idx in xrange(points.shape[1]):
-        x,y = int(points[0,idx]),int(points[1,idx])
-        z_val = 1-min(points[2,idx]/100.0,1.0)
-        im_lidar[y,x] = np.round(z_val*255.0).astype('uint8')
+    # im_lidar = points_to_image(points,np.shape(image)[0:2])
+    # im_lidar_lr = points_to_image(points_lr,np.shape(image)[0:2])
 
-    cv2.imwrite('temp_lidar_dist_cam{}.png'.format(cam_num),im_lidar)
+    # cv2.imwrite('lidar_dist_cam{}.png'.format(cam_num),im_lidar)
+    # cv2.imwrite('lidar_dist_cam{}_lr.png'.format(cam_num),im_lidar_lr)
 
-    # plt.figure(1)
-    # plt.imshow(image)
-    # plt.hold(True)
-    # plt.scatter(x_im, y_im, c=z_im, s=5, linewidths=0)
-    # plt.xlim(0, 1616)
-    # plt.ylim(1232, 0)
+    undistort = Undistort('cam_params/U2D_Cam{}_1616X1232.txt'.format(cam_num))
+    points_ud = undistort.undistort(points)
+    points_lr_ud = undistort.undistort(points_lr)
 
-    undistort = Undistort('cam_params/D2U_Cam{}_1616X1232.txt'.format(cam_num))
-    im_lidar_undistorted = undistort.undistort(im_lidar)
-    cv2.imwrite('temp_lidar_undist_cam{}.png'.format(cam_num),im_lidar_undistorted)
+    im_lidar_ud = points_to_image(points_ud,np.shape(image)[0:2])
+    im_lidar_lr_ud = points_to_image(points_lr_ud,np.shape(image)[0:2])
+    
+    cv2.imwrite('lidar_undist_cam{}.png'.format(cam_num),im_lidar_ud)
+    cv2.imwrite('lidar_undist_cam{}_lr.png'.format(cam_num),im_lidar_lr_ud)
 
-    # # Generate low resolotion lidar image
-    # idx_incam = (x_im_lr>=0) & (x_im_lr<1626-0.5) & (y_im_lr>=0) & (y_im_lr<1232-0.5)
-    # x_im_lr = x_im_lr[idx_incam]
-    # y_im_lr = y_im_lr[idx_incam]
-    # z_im_lr = z_im_lr[idx_incam]
-
-    # im_lidar_lr = np.zeros(np.shape(image)[0:2],dtype=np.uint8)
-    # for idx in xrange(len(x_im_lr)):
-    #     x,y = np.round((x_im_lr[idx],y_im_lr[idx])).astype('int')
-    #     z_val = 1-min(z_im_lr[idx]/100.0,1.0)
-    #     im_lidar_lr[y,x] = np.round(z_val*255.0).astype('uint8')
-
-    # # cv2.imwrite('temp_lidar_dist_cam{}_lr.png'.format(cam_num),im_lidar_lr)
-
-    # # plt.figure(2)
-    # # plt.imshow(image)
-    # # plt.hold(True)
-    # # plt.scatter(x_im_lr, y_im_lr, c=z_im_lr, s=5, linewidths=0)
-    # # plt.xlim(0, 1616)
-    # # plt.ylim(1232, 0)
-
-    # im_lidar_lr_undistorted = undistort.undistort(im_lidar_lr)
-    # cv2.imwrite('temp_lidar_undist_cam{}_lr.png'.format(cam_num),im_lidar_lr_undistorted)
-
-    # plt.show()
+    plot_imlidar(image,points_ud,points_lr_ud)
 
     return 0
 
