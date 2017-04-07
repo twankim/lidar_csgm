@@ -1,3 +1,8 @@
+# Data Folder
+lb3
+velodyne_sync
+cam_params
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
