@@ -3,6 +3,12 @@ lb3
 velodyne_sync
 cam_params
 
+# Image files
+*.tiff
+*.png
+*.jpg
+*.jpeg
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
