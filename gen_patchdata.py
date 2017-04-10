@@ -213,9 +213,6 @@ def gen_data(d_path,list_date,n_step,n_init,name_set):
                 im_lidar_ud = points_to_image(points_ud,(im_height,im_width))
                 im_lidar_lr_ud = points_to_image(points_lr_ud,(im_height,im_width))
 
-                cv2.imwrite('lidar_undist_cam{}.png'.format(cam_num),im_lidar_ud)
-                cv2.imwrite('lidar_undist_cam{}_lr.png'.format(cam_num),im_lidar_lr_ud)
-
                 # # Load image
                 # image = cv2.imread(os.path.join(
                 #                         d_path,
@@ -228,7 +225,11 @@ def gen_data(d_path,list_date,n_step,n_init,name_set):
 
 
 def gen_lidar_patch():
-    return 0
+    with open(temp_file,'wb') as fid:
+        cPickle.dump([aa,bb], fid, cPickle.HIGHEST_PROTOCOL)
+    
+    cv2.imwrite('lidar_undist_cam{}.png'.format(cam_num),im_lidar_ud)
+    cv2.imwrite('lidar_undist_cam{}_lr.png'.format(cam_num),im_lidar_lr_ud)
 
 def plot_imlidar(image,points,points_lr):
     # Plot with image
