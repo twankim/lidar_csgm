@@ -6,12 +6,14 @@
 #
 # To use:
 #
-#    python project_vel_to_cam.py vel img cam_num
+#    python project_vel_to_cam.py
+# 
 #
-#       vel:  The velodyne binary file (timestamp.bin)
-#       img:  The undistorted image (timestamp.tiff)
-#   cam_num:  The index (0 through 5) of the camera
-#    d_path:  The path for nclt data
+#       train:  Dates for train
+#        test:  Dates for test
+#        step:  step size between LIDAR frames
+#        init:  Number of frames to skip from the beginning
+#        data:  Path of NCLT data
 #
 
 import sys
@@ -22,8 +24,18 @@ import numpy as np
 import os
 import cv2
 from scipy import ndimage
+import argparse
+import glob
+import cPickle
 
 from undistort_lidar import Undistort
+
+# laser ids to be collected (Manually select as 8 layer)
+id_lowres = [22,26,30,3,7,11,15,19]
+
+# Size of Image
+im_width = 1616
+im_height = 1232
 
 def convert(x_s, y_s, z_s):
 
@@ -132,102 +144,164 @@ def points_to_image(points,im_shape):
         im_lidar[y,x] = np.round(z_val*255.0).astype('uint8')
     return im_lidar
 
+def gen_data(d_path,list_date,n_step,n_init,name_set):
+    set_path = os.path.join(d_path,name_set)
+    lr_path = os.path.join(set_path,'layer_8')
+    lr_path_im = os.path.join(lr_path,'images')
+    lr_path_pt = os.path.join(lr_path,'points')
+    hr_path = os.path.join(set_path,'layer_32')
+    hr_path_im = os.path.join(hr_path,'images')
+    hr_path_pt = os.path.join(hr_path,'points')
+    
+    # Make required diretories
+    if not os.path.exists(set_path):
+        os.makedirs(set_path)
+    if not os.path.exists(lr_path):
+        os.makedirs(lr_path)
+    if not os.path.exists(lr_path_im):
+        os.makedirs(lr_path_im)
+    if not os.path.exists(lr_path_pt):
+        os.makedirs(lr_path_pt)
+    if not os.path.exists(hr_path):
+        os.makedirs(hr_path)
+    if not os.path.exists(hr_path_im):
+        os.makedirs(hr_path_im)
+    if not os.path.exists(hr_path_pt):
+        os.makedirs(hr_path_pt)
+
+    for d_set in list_date:
+        curr_path = os.path.join(d_path,d_set)
+        velo_path = os.path.join(curr_path,'velodyne_sync/')
+        
+        # Load velodyne files
+        f_lidar = glob.glob(os.path.join(velo_path,'*.bin'))
+        name_list = [lname.split(velo_path)[1].split('.')[0] for lname in f_lidar]
+        
+        # Skip n_init_points and 
+        assert n_init<len(name_list),\
+               'n_init must be less than the number of files: {}'.format(curr_path)
+        name_list = name_list[n_init::n_step]
+
+        for fname in name_list:
+            # Load velodyne points
+            hits_body,hits_info = load_vel_hits(os.path.join(velo_path,fname+'.bin'))
+
+            for cam_num in xrange(1,6):
+                hits_image = project_vel_to_cam(hits_body,cam_num)
+
+                # x,y,z,i,l
+                points = np.vstack((hits_image,hits_info))
+                points[0,:] = np.round(hits_image[0, :]/hits_image[2, :])
+                points[1,:] = np.round(hits_image[1, :]/hits_image[2, :])
+
+                idx_incam = (points[0,:]>=0) & (points[0,:]<im_width) &\
+                            (points[1,:]>=0) & (points[1,:]<im_height) &\
+                            (points[2,:]>0)
+                idx_lowres = [points[4,i] in id_lowres for i in xrange(points.shape[1])]\
+                             & idx_incam
+
+                points_lr = points[:,idx_lowres] # Low resolution (8layser)
+                points = points[:,idx_incam]
+
+                undistort = Undistort(os.path.join(
+                                        d_path,
+                                        'cam_params/U2D_Cam{}_1616X1232.txt'.format(cam_num)
+                                     ))
+                points_ud = undistort.undistort(points)
+                points_lr_ud = undistort.undistort(points_lr)
+
+                im_lidar_ud = points_to_image(points_ud,(im_height,im_width))
+                im_lidar_lr_ud = points_to_image(points_lr_ud,(im_height,im_width))
+
+                cv2.imwrite('lidar_undist_cam{}.png'.format(cam_num),im_lidar_ud)
+                cv2.imwrite('lidar_undist_cam{}_lr.png'.format(cam_num),im_lidar_lr_ud)
+
+                # # Load image
+                # image = cv2.imread(os.path.join(
+                #                         d_path,
+                #                         'lb3',
+                #                         'Cam{}'.format(cam_num),
+                #                         fname+'.tiff'
+                #                    ))[:,:,(2,1,0)]
+
+                # plot_imlidar(image,points_ud,points_lr_ud)
+
+
+def gen_lidar_patch():
+    return 0
+
 def plot_imlidar(image,points,points_lr):
     # Plot with image
     plt.figure(1)
     plt.subplot(1,2,1)
     plt.imshow(ndimage.rotate(image,270))
     plt.hold(True)
-    plt.scatter(1231-points[1,:],
+    plt.scatter(im_height-points[1,:]-1,
                 points[0,:],
                 c=points[2,:],
                 s=5,
                 linewidths=0)
-    plt.xlim(0, 1232)
-    plt.ylim(1616, 0)
+    plt.xlim(0, im_height)
+    plt.ylim(im_width, 0)
     plt.title('32-layer Laser')
 
     plt.subplot(1,2,2)
     plt.imshow(ndimage.rotate(image,270))
     plt.hold(True)
-    plt.scatter(1231-points_lr[1,:],
+    plt.scatter(im_height-points_lr[1,:]-1,
                 points_lr[0,:],
                 c=points_lr[2,:],
                 s=5,
                 linewidths=0)
-    plt.xlim(0, 1232)
-    plt.ylim(1616, 0)
+    plt.xlim(0, im_height)
+    plt.ylim(im_width, 0)
     plt.title('8-layer Laser')
 
     plt.show()
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=
+                        'Generate LIDAR patch dataset for GAN')
+    parser.add_argument('-train', dest='f_train',
+                        help='Dates for train',
+                        default = '2012-04-29', type = str)
+    parser.add_argument('-test', dest='f_test',
+                        help='Dates for test',
+                        default = '2013-01-10', type = str)
+    parser.add_argument('-step', dest='step',
+                        help='Step size between LIDAR frames',
+                        default = 2, type = int)
+    parser.add_argument('-init', dest='n_init',
+                        help='Number of frames to skip',
+                        default = 100, type = int)
+    parser.add_argument('-data', dest='d_path',
+                        help='Path of NCLT data',
+                        default = os.getcwd(), type = str)
+    # parser.add_argument('-cam', dest='cam_num',
+    #                     help='Index of the camera (1~5)',
+    #                     default = 5, type = int)
+    args = parser.parse_args()
+    return args
+
 def main(args):
-
-    if len(args)<4:
-        print  """Incorrect usage.
-
-To use:
-
-   python project_vel_to_cam.py vel img cam_num d_path
-
-      vel:  The velodyne binary file (timestamp.bin)
-      img:  The undistorted image (timestamp.tiff)
-  cam_num:  The index (0 through 5) of the camera
-   d_path:  The manual path of the data
-"""
-        return 1
-
-    if len(args)>4:
-        d_path = args[4] # Use specified path
+    list_train = args.f_train.split(',')
+    list_test = args.f_test.split(',')
+    n_step = args.step
+    n_init = args.n_init
+    if args.d_path[0] == '/':
+        d_path = args.d_path # Absolute path
     else:
-        d_path = os.getcwd() # Use current path
-
-    # Load velodyne points
-    hits_body,hits_info = load_vel_hits(os.path.join(d_path,args[1]))
-
-    # Load image
-    image = cv2.imread(os.path.join(d_path,args[2]))[:,:,(2,1,0)]
-
-    cam_num = int(args[3])
-
-    hits_image = project_vel_to_cam(hits_body, cam_num)
+        d_path = os.path.join(os.getcwd(),args.d_path)
     
-    # laser ids to be collected (Manually select as 8 layer)
-    id_lowres = [22,26,30,3,7,11,15,19]
+    # ----------- Train Data ----------------
+    gen_data(d_path,list_train,n_step,n_init,'train')
 
-    # x,y,z,i,l
-    points = np.vstack((hits_image,hits_info))
-    points[0,:] = np.round(hits_image[0, :]/hits_image[2, :])
-    points[1,:] = np.round(hits_image[1, :]/hits_image[2, :])
-
-    idx_incam = (points[0,:]>=0) & (points[0,:]<image.shape[1]) &\
-                (points[1,:]>=0) & (points[1,:]<image.shape[0]) &\
-                (points[2,:]>0)
-    idx_lowres = [points[4,i] in id_lowres for i in xrange(points.shape[1])]\
-                 & idx_incam
-
-    points_lr = points[:,idx_lowres] # Low resolution (8layser)
-    points = points[:,idx_incam]
-
-    # im_lidar = points_to_image(points,np.shape(image)[0:2])
-    # im_lidar_lr = points_to_image(points_lr,np.shape(image)[0:2])
-
-    # cv2.imwrite('lidar_dist_cam{}.png'.format(cam_num),im_lidar)
-    # cv2.imwrite('lidar_dist_cam{}_lr.png'.format(cam_num),im_lidar_lr)
-
-    undistort = Undistort('cam_params/U2D_Cam{}_1616X1232.txt'.format(cam_num))
-    points_ud = undistort.undistort(points)
-    points_lr_ud = undistort.undistort(points_lr)
-
-    im_lidar_ud = points_to_image(points_ud,np.shape(image)[0:2])
-    im_lidar_lr_ud = points_to_image(points_lr_ud,np.shape(image)[0:2])
-    
-    cv2.imwrite('lidar_undist_cam{}.png'.format(cam_num),im_lidar_ud)
-    cv2.imwrite('lidar_undist_cam{}_lr.png'.format(cam_num),im_lidar_lr_ud)
-
-    plot_imlidar(image,points_ud,points_lr_ud)
+    # ----------- Test Data ----------------
 
     return 0
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv))
+    args = parse_args()
+    print "Called with args:"
+    print args
+    sys.exit(main(args))
