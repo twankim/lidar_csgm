@@ -9,11 +9,12 @@
 #    python project_vel_to_cam.py
 # 
 #
-#       train:  Dates for train
-#        test:  Dates for test
-#        step:  step size between LIDAR frames
-#        init:  Number of frames to skip from the beginning
-#        data:  Path of NCLT data
+#       -train:  Dates for train
+#        -test:  Dates for test
+#        -step:  step size between LIDAR frames
+#        -init:  Number of frames to skip from the beginning
+#        -data:  Path of NCLT data
+#         -cam:  Index of cameras to use (1~5)
 #
 
 import sys
@@ -343,12 +344,12 @@ def parse_args():
                         default = 100, type = int)
     parser.add_argument('-data', dest='d_path',
                         help='Path of NCLT data',
-                        default = os.getcwd(), type = str)
+                        default = '/data/nclt', type = str)
     parser.add_argument('-size', dest='p_size',
                         help='Size of a patch p x p',
                         default = 128, type = int)
     parser.add_argument('-cam', dest='cam_nums',
-                        help='Index of the camera (1~5) ex) 1,3,5',
+                        help='Index of cameras to use (1~5) ex) 1,3,5',
                         default = '1,4,5', type = str)
     args = parser.parse_args()
     return args
