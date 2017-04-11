@@ -35,11 +35,9 @@ class Undistort(object):
         mapped[2:,:] = points[2:,:]
         for idx in xrange(np.shape(points)[1]):
             mapped[0,idx] = np.round(self.mapu[int(points[1,idx]),
-                                               int(points[0,idx])])\
-                                    .astype('int')
+                                               int(points[0,idx])])
             mapped[1,idx] = np.round(self.mapv[int(points[1,idx]),
-                                               int(points[0,idx])])\
-                                    .astype('int')
+                                               int(points[0,idx])])
 
         idx = (mapped[0,:]>=0) & (mapped[0,:]<self.mapu.shape[1]) &\
               (mapped[1,:]>=0) & (mapped[1,:]<self.mapu.shape[0])

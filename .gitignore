@@ -2,6 +2,8 @@
 lb3
 velodyne_sync
 cam_params
+train
+test
 
 # Image files
 *.tiff

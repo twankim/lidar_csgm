@@ -37,6 +37,9 @@ id_lowres = [22,26,30,3,7,11,15,19]
 im_width = 1616
 im_height = 1232
 
+# Minimum number of points in a patch (c_ratio*p_size)
+c_ratio = 0.5
+
 def convert(x_s, y_s, z_s):
 
     scaling = 0.005 # 5 mm
@@ -144,7 +147,7 @@ def points_to_image(points,im_shape):
         im_lidar[y,x] = np.round(z_val*255.0).astype('uint8')
     return im_lidar
 
-def gen_data(d_path,list_date,n_step,n_init,name_set):
+def gen_data(d_path,list_date,n_step,n_init,name_set,p_size):
     set_path = os.path.join(d_path,name_set)
     lr_path = os.path.join(set_path,'layer_8')
     lr_path_im = os.path.join(lr_path,'images')
@@ -181,8 +184,10 @@ def gen_data(d_path,list_date,n_step,n_init,name_set):
         assert n_init<len(name_list),\
                'n_init must be less than the number of files: {}'.format(curr_path)
         name_list = name_list[n_init::n_step]
+        n_total = len(name_list)
 
-        for fname in name_list:
+        for i_iter,fname in enumerate(name_list):
+            print "    Generating {} Set ({}/{})".format(name_set,i_iter+1,n_total)
             # Load velodyne points
             hits_body,hits_info = load_vel_hits(os.path.join(velo_path,fname+'.bin'))
 
@@ -200,18 +205,44 @@ def gen_data(d_path,list_date,n_step,n_init,name_set):
                 idx_lowres = [points[4,i] in id_lowres for i in xrange(points.shape[1])]\
                              & idx_incam
 
-                points_lr = points[:,idx_lowres] # Low resolution (8layser)
-                points = points[:,idx_incam]
+                points_lr = points[:,idx_lowres] # Low resolution (8-layer)
+                points = points[:,idx_incam] # High resolution (32-layer)
 
+                # Undistort images
                 undistort = Undistort(os.path.join(
                                         d_path,
                                         'cam_params/U2D_Cam{}_1616X1232.txt'.format(cam_num)
                                      ))
-                points_ud = undistort.undistort(points)
-                points_lr_ud = undistort.undistort(points_lr)
+                points_ud = undistort.undistort(points) # High resolution (32-layer)
+                points_lr_ud = undistort.undistort(points_lr) # Low resolution (8-layer)
 
-                im_lidar_ud = points_to_image(points_ud,(im_height,im_width))
-                im_lidar_lr_ud = points_to_image(points_lr_ud,(im_height,im_width))
+                im_lidar = points_to_image(points_ud,(im_height,im_width))
+                im_lidar_lr = points_to_image(points_lr_ud,(im_height,im_width))
+
+                list_pidx,list_pidx_lr,list_pinit = get_patch_idx(
+                                                        points_ud,
+                                                        points_lr_ud,
+                                                        p_size)
+
+                for i in xrange(len(list_pidx)):
+                    # Save Image patches
+                    p_name = '{}_{}_{}'.format(fname,cam_num,i)
+                    im_path = os.path.join(hr_path_im,p_name+'.png')
+                    im_path_lr = os.path.join(lr_path_im,p_name+'.png')
+                                                                    
+                    x_init,y_init = list_pinit[i]
+                    cv2.imwrite(im_path,
+                                im_lidar[y_init:y_init+p_size,x_init:x_init+p_size])
+                    cv2.imwrite(im_path_lr,
+                                im_lidar_lr[y_init:y_init+p_size,x_init:x_init+p_size])
+
+                    # Save Points
+                    pt_path = os.path.join(hr_path_pt,p_name+'.pkl')
+                    pt_path_lr = os.path.join(lr_path_pt,p_name+'.pkl')
+                    with open(pt_path,'wb') as fid:
+                        cPickle.dump(points_ud[:,list_pidx[i]], fid, cPickle.HIGHEST_PROTOCOL)
+                    with open(pt_path_lr,'wb') as fid:
+                        cPickle.dump(points_lr_ud[:,list_pidx_lr[i]], fid, cPickle.HIGHEST_PROTOCOL)
 
                 # # Load image
                 # image = cv2.imread(os.path.join(
@@ -223,13 +254,27 @@ def gen_data(d_path,list_date,n_step,n_init,name_set):
 
                 # plot_imlidar(image,points_ud,points_lr_ud)
 
+def get_patch_idx(points,points_lr,p_size):
+    # x_min,y_min,x_max,y_max = points[0,:].min(),points[1,:].min(),\
+    #                           points[0,:].max(),points[1,:].max()
+    # x_min_lr,y_min_lr,x_max_lr,y_max_lr = points_lr[0,:].min(),points_lr[1,:].min(),\
+    #                                       points_lr[0,:].max(),points_lr[1,:].max()
+    list_pidx = []
+    list_pidx_lr = []
+    list_pinit = []
+    for y_init in xrange(0,im_height,p_size):
+        for x_init in xrange(0,im_width,p_size):
+            idx_lr = (points_lr[1,:]>=y_init) & (points_lr[1,:]<y_init+p_size) & \
+                     (points_lr[0,:]>=x_init) & (points_lr[0,:]<x_init+p_size)
+            if sum(idx_lr)> p_size*c_ratio:
+                # Consider only patches with enough points
+                list_pidx_lr.append(idx_lr)
+                idx = (points[1,:]>=y_init) & (points[1,:]<y_init+p_size) & \
+                      (points[0,:]>=x_init) & (points[0,:]<x_init+p_size)
+                list_pidx.append(idx)
+                list_pinit.append([x_init,y_init])
 
-def gen_lidar_patch():
-    with open(temp_file,'wb') as fid:
-        cPickle.dump([aa,bb], fid, cPickle.HIGHEST_PROTOCOL)
-    
-    cv2.imwrite('lidar_undist_cam{}.png'.format(cam_num),im_lidar_ud)
-    cv2.imwrite('lidar_undist_cam{}_lr.png'.format(cam_num),im_lidar_lr_ud)
+    return list_pidx,list_pidx_lr,list_pinit
 
 def plot_imlidar(image,points,points_lr):
     # Plot with image
@@ -278,6 +323,9 @@ def parse_args():
     parser.add_argument('-data', dest='d_path',
                         help='Path of NCLT data',
                         default = os.getcwd(), type = str)
+    parser.add_argument('-size', dest='p_size',
+                        help='Size of a patch p x p',
+                        default = 128, type = int)
     # parser.add_argument('-cam', dest='cam_num',
     #                     help='Index of the camera (1~5)',
     #                     default = 5, type = int)
@@ -293,11 +341,15 @@ def main(args):
         d_path = args.d_path # Absolute path
     else:
         d_path = os.path.join(os.getcwd(),args.d_path)
+    p_size = args.p_size
     
     # ----------- Train Data ----------------
-    gen_data(d_path,list_train,n_step,n_init,'train')
+    print "... Generating Train Data"
+    gen_data(d_path,list_train,n_step,n_init,'train',p_size)
 
     # ----------- Test Data ----------------
+    # print "... Generating Test Data"
+    # gen_data(d_path,list_train,n_step,n_init,'test',p_size)
 
     return 0
 
