@@ -187,7 +187,7 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums):
         n_total = len(name_list)
 
         for i_iter,fname in enumerate(name_list):
-            print "    Generating {} Set ({}/{})".format(name_set,i_iter+1,n_total)
+            print "    ... Generating: {} ({}/{})".format(name_set,i_iter+1,n_total)
             # Load velodyne points
             hits_body,hits_info = load_vel_hits(os.path.join(velo_path,fname+'.bin'))
 
