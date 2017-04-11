@@ -147,7 +147,7 @@ def points_to_image(points,im_shape):
         im_lidar[y,x] = np.round(z_val*255.0).astype('uint8')
     return im_lidar
 
-def gen_data(d_path,list_date,n_step,n_init,name_set,p_size):
+def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums):
     set_path = os.path.join(d_path,name_set)
     lr_path = os.path.join(set_path,'layer_8')
     lr_path_im = os.path.join(lr_path,'images')
@@ -191,7 +191,7 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size):
             # Load velodyne points
             hits_body,hits_info = load_vel_hits(os.path.join(velo_path,fname+'.bin'))
 
-            for cam_num in xrange(1,6):
+            for cam_num in cam_nums:
                 hits_image = project_vel_to_cam(hits_body,d_path,cam_num)
 
                 # x,y,z,i,l
@@ -330,10 +330,10 @@ def parse_args():
     parser = argparse.ArgumentParser(description=
                         'Generate LIDAR patch dataset for GAN')
     parser.add_argument('-train', dest='f_train',
-                        help='Dates for train',
+                        help='Dates for train ex) 2012-04-29,2013-01-10',
                         default = '2012-04-29', type = str)
     parser.add_argument('-test', dest='f_test',
-                        help='Dates for test',
+                        help='Dates for test ex) 2012-04-29,2013-01-10',
                         default = '2013-01-10', type = str)
     parser.add_argument('-step', dest='step',
                         help='Step size between LIDAR frames',
@@ -347,9 +347,9 @@ def parse_args():
     parser.add_argument('-size', dest='p_size',
                         help='Size of a patch p x p',
                         default = 128, type = int)
-    # parser.add_argument('-cam', dest='cam_num',
-    #                     help='Index of the camera (1~5)',
-    #                     default = 5, type = int)
+    parser.add_argument('-cam', dest='cam_nums',
+                        help='Index of the camera (1~5) ex) 1,3,5',
+                        default = '1,4,5', type = str)
     args = parser.parse_args()
     return args
 
@@ -358,6 +358,7 @@ def main(args):
     list_test = args.f_test.split(',')
     n_step = args.step
     n_init = args.n_init
+    cam_nums = [int(cam_num) for cam_num in args.cam_nums.split(',')]
     if args.d_path[0] == '/':
         d_path = args.d_path # Absolute path
     else:
@@ -366,11 +367,11 @@ def main(args):
     
     # ----------- Train Data ----------------
     print "... Generating Train Data"
-    gen_data(d_path,list_train,n_step,n_init,'train',p_size)
+    gen_data(d_path,list_train,n_step,n_init,'train',p_size,cam_nums)
 
     # ----------- Test Data ----------------
     print "... Generating Test Data"
-    gen_data(d_path,list_train,n_step,n_init,'test',p_size)
+    gen_data(d_path,list_train,n_step,n_init,'test',p_size,cam_nums)
 
     return 0
 
