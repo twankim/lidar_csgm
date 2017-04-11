@@ -219,30 +219,44 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size):
                 im_lidar = points_to_image(points_ud,(im_height,im_width))
                 im_lidar_lr = points_to_image(points_lr_ud,(im_height,im_width))
 
-                list_pidx,list_pidx_lr,list_pinit = get_patch_idx(
-                                                        points_ud,
-                                                        points_lr_ud,
-                                                        p_size)
+                if name_set == 'train':
+                    list_pidx,list_pidx_lr,list_pinit = get_patch_idx(
+                                                            points_ud,
+                                                            points_lr_ud,
+                                                            p_size)
+                    for i in xrange(len(list_pidx)):
+                        # Save Image patches
+                        p_name = '{}_{}_{}'.format(fname,cam_num,i)
+                        im_path = os.path.join(hr_path_im,p_name+'.png')
+                        im_path_lr = os.path.join(lr_path_im,p_name+'.png')
+                                                                    
+                        x_init,y_init = list_pinit[i]
+                        cv2.imwrite(im_path,
+                                    im_lidar[y_init:y_init+p_size,x_init:x_init+p_size])
+                        cv2.imwrite(im_path_lr,
+                                    im_lidar_lr[y_init:y_init+p_size,x_init:x_init+p_size])
 
-                for i in xrange(len(list_pidx)):
-                    # Save Image patches
-                    p_name = '{}_{}_{}'.format(fname,cam_num,i)
+                        # Save Points
+                        pt_path = os.path.join(hr_path_pt,p_name+'.pkl')
+                        pt_path_lr = os.path.join(lr_path_pt,p_name+'.pkl')
+                        with open(pt_path,'wb') as fid:
+                            cPickle.dump(points_ud[:,list_pidx[i]], fid, cPickle.HIGHEST_PROTOCOL)
+                        with open(pt_path_lr,'wb') as fid:
+                            cPickle.dump(points_lr_ud[:,list_pidx_lr[i]], fid, cPickle.HIGHEST_PROTOCOL)
+                else:
+                    # For test set, save original LIDAR image (32/8) and corresponding points
+                    p_name = '{}_{}'.format(fname,cam_num,i)
                     im_path = os.path.join(hr_path_im,p_name+'.png')
                     im_path_lr = os.path.join(lr_path_im,p_name+'.png')
-                                                                    
-                    x_init,y_init = list_pinit[i]
-                    cv2.imwrite(im_path,
-                                im_lidar[y_init:y_init+p_size,x_init:x_init+p_size])
-                    cv2.imwrite(im_path_lr,
-                                im_lidar_lr[y_init:y_init+p_size,x_init:x_init+p_size])
+                    cv2.imwrite(im_path,im_lidar)
+                    cv2.imwrite(im_path_lr,im_lidar_lr)
 
-                    # Save Points
                     pt_path = os.path.join(hr_path_pt,p_name+'.pkl')
                     pt_path_lr = os.path.join(lr_path_pt,p_name+'.pkl')
                     with open(pt_path,'wb') as fid:
-                        cPickle.dump(points_ud[:,list_pidx[i]], fid, cPickle.HIGHEST_PROTOCOL)
+                        cPickle.dump(points_ud, fid, cPickle.HIGHEST_PROTOCOL)
                     with open(pt_path_lr,'wb') as fid:
-                        cPickle.dump(points_lr_ud[:,list_pidx_lr[i]], fid, cPickle.HIGHEST_PROTOCOL)
+                        cPickle.dump(points_lr_ud, fid, cPickle.HIGHEST_PROTOCOL)
 
                 # # Load image
                 # image = cv2.imread(os.path.join(
@@ -262,15 +276,22 @@ def get_patch_idx(points,points_lr,p_size):
     list_pidx = []
     list_pidx_lr = []
     list_pinit = []
-    for y_init in xrange(0,im_height,p_size):
-        for x_init in xrange(0,im_width,p_size):
+    for y_init in xrange(0,im_height-p_size,p_size):
+        for x_init in xrange(0,im_width-p_size,p_size):
             idx_lr = (points_lr[1,:]>=y_init) & (points_lr[1,:]<y_init+p_size) & \
                      (points_lr[0,:]>=x_init) & (points_lr[0,:]<x_init+p_size)
-            if sum(idx_lr)> p_size*c_ratio:
-                # Consider only patches with enough points
+            # if sum(idx_lr)> p_size*c_ratio:
+            # # Consider only patches with enough points after compression
+            #     list_pidx_lr.append(idx_lr)
+            #     idx = (points[1,:]>=y_init) & (points[1,:]<y_init+p_size) & \
+            #           (points[0,:]>=x_init) & (points[0,:]<x_init+p_size)
+            #     list_pidx.append(idx)
+            #     list_pinit.append([x_init,y_init])
+            
+            idx = (points[1,:]>=y_init) & (points[1,:]<y_init+p_size) & \
+                  (points[0,:]>=x_init) & (points[0,:]<x_init+p_size)
+            if sum(idx) >= p_size*c_ratio:
                 list_pidx_lr.append(idx_lr)
-                idx = (points[1,:]>=y_init) & (points[1,:]<y_init+p_size) & \
-                      (points[0,:]>=x_init) & (points[0,:]<x_init+p_size)
                 list_pidx.append(idx)
                 list_pinit.append([x_init,y_init])
 
@@ -348,8 +369,8 @@ def main(args):
     gen_data(d_path,list_train,n_step,n_init,'train',p_size)
 
     # ----------- Test Data ----------------
-    # print "... Generating Test Data"
-    # gen_data(d_path,list_train,n_step,n_init,'test',p_size)
+    print "... Generating Test Data"
+    gen_data(d_path,list_train,n_step,n_init,'test',p_size)
 
     return 0
 
