@@ -116,11 +116,11 @@ def ssc_to_homo(ssc):
 
     return H
 
-def project_vel_to_cam(hits, cam_num):
+def project_vel_to_cam(hits,d_path,cam_num):
 
     # Load camera parameters
-    K = np.loadtxt('cam_params/K_cam%d.csv' % (cam_num), delimiter=',')
-    x_lb3_c = np.loadtxt('cam_params/x_lb3_c%d.csv' % (cam_num), delimiter=',')
+    K = np.loadtxt(os.path.join(d_path,'cam_params/K_cam%d.csv' % (cam_num)), delimiter=',')
+    x_lb3_c = np.loadtxt(os.path.join(d_path,'cam_params/x_lb3_c%d.csv' % (cam_num)), delimiter=',')
 
     # Other coordinate transforms we need
     x_body_lb3 = [0.035, 0.002, -1.23, -179.93, -0.23, 0.50]
@@ -192,7 +192,7 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size):
             hits_body,hits_info = load_vel_hits(os.path.join(velo_path,fname+'.bin'))
 
             for cam_num in xrange(1,6):
-                hits_image = project_vel_to_cam(hits_body,cam_num)
+                hits_image = project_vel_to_cam(hits_body,d_path,cam_num)
 
                 # x,y,z,i,l
                 points = np.vstack((hits_image,hits_info))
