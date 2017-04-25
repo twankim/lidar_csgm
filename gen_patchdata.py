@@ -328,6 +328,9 @@ def plot_imlidar(image,points,points_lr):
     plt.show()
 
 def parse_args():
+    def str2bool(v):
+        return v.lower() in ('true', '1')
+
     parser = argparse.ArgumentParser(description=
                         'Generate LIDAR patch dataset for GAN')
     parser.add_argument('-train', dest='f_train',
@@ -351,6 +354,9 @@ def parse_args():
     parser.add_argument('-cam', dest='cam_nums',
                         help='Index of cameras to use (1~5) ex) 1,3,5',
                         default = '1,4,5', type = str)
+    parser.add_argument('-inpaint', dest='is_inpaint',
+                        help='Generate Inpainted ground truth data',
+                        default = False, type = str2bool)
     args = parser.parse_args()
     return args
 
