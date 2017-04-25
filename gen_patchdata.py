@@ -41,6 +41,13 @@ im_height = 1232
 # Minimum number of points in a patch (c_ratio*p_size)
 c_ratio = 0.5
 
+# Parameters for inpainting
+inpaint_radius = 4
+inpaint_margin = 0
+# inpaint_method = cv2.INPAINT_NS
+inpaint_method = cv2.INPAINT_TELEA
+
+
 def convert(x_s, y_s, z_s):
 
     scaling = 0.005 # 5 mm
@@ -143,6 +150,10 @@ def project_vel_to_cam(hits,d_path,cam_num):
 def points_to_image(points,im_shape):
     im_lidar = np.zeros(im_shape,dtype=np.uint8)
     im_mask = np.ones(im_shape,dtype=np.uint8)
+    x_min = max(0, np.round(points[0,:].min()).astype('int')-inpaint_margin)
+    x_max = min(im_width-1, np.round(points[0,:].max()).astype('int')+inpaint_margin)
+    im_mask[:,:x_min] = 0
+    im_mask[:,x_max+1:] = 0
     for idx in xrange(points.shape[1]):
         x,y = int(points[0,idx]),int(points[1,idx])
         z_val = 1-min(points[2,idx]/100.0,1.0)
@@ -151,7 +162,8 @@ def points_to_image(points,im_shape):
     return im_lidar, im_mask
 
 def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums,is_inpaint):
-    set_path = os.path.join(d_path,name_set)
+    org_path = os.path.join(d_path,'nclt_{}'.format(p_size))
+    set_path = os.path.join(org_path,name_set)
     lr_path = os.path.join(set_path,'layer_8')
     lr_path_im = os.path.join(lr_path,'images')
     lr_path_pt = os.path.join(lr_path,'points')
@@ -162,6 +174,8 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums,is_inpaint)
     ip_path_im = os.path.join(ip_path,'images')
     
     # Make required diretories
+    if not os.path.exists(org_path):
+        os.makedirs(org_path)
     if not os.path.exists(set_path):
         os.makedirs(set_path)
     if not os.path.exists(lr_path):
@@ -230,7 +244,7 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums,is_inpaint)
                 im_lidar_lr,im_mask_lr = points_to_image(points_lr_ud,(im_height,im_width))
 
                 if is_inpaint:
-                    im_inpaint = cv2.inpaint(im_lidar,im_mask,3,cv2.INPAINT_TELEA)
+                    im_inpaint = cv2.inpaint(im_lidar,im_mask,inpaint_radius,inpaint_method)
 
                 if name_set == 'train':
                     list_pidx,list_pidx_lr,list_pinit = get_patch_idx(
@@ -369,7 +383,7 @@ def parse_args():
                         default = '/data/nclt', type = str)
     parser.add_argument('-size', dest='p_size',
                         help='Size of a patch p x p',
-                        default = 128, type = int)
+                        default = 64, type = int)
     parser.add_argument('-cam', dest='cam_nums',
                         help='Index of cameras to use (1~5) ex) 1,3,5',
                         default = '1,4,5', type = str)
