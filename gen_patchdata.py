@@ -142,11 +142,13 @@ def project_vel_to_cam(hits,d_path,cam_num):
 
 def points_to_image(points,im_shape):
     im_lidar = np.zeros(im_shape,dtype=np.uint8)
+    im_mask = np.ones(im_shape,dtype=np.uint8)
     for idx in xrange(points.shape[1]):
         x,y = int(points[0,idx]),int(points[1,idx])
         z_val = 1-min(points[2,idx]/100.0,1.0)
         im_lidar[y,x] = np.round(z_val*255.0).astype('uint8')
-    return im_lidar
+        im_mask[y,x] = 0
+    return im_lidar, im_mask
 
 def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums):
     set_path = os.path.join(d_path,name_set)
@@ -156,6 +158,8 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums):
     hr_path = os.path.join(set_path,'layer_32')
     hr_path_im = os.path.join(hr_path,'images')
     hr_path_pt = os.path.join(hr_path,'points')
+    ip_path = os.path.join(set_path,'inpainted')
+    ip_path_im = os.path.join(ip_path,'images')
     
     # Make required diretories
     if not os.path.exists(set_path):
@@ -172,6 +176,10 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums):
         os.makedirs(hr_path_im)
     if not os.path.exists(hr_path_pt):
         os.makedirs(hr_path_pt)
+    if not os.path.exists(ip_path):
+        os.makedirs(ip_path)
+    if not os.path.exists(ip_path_im):
+        os.makedirs(ip_path_im)
 
     for d_set in list_date:
         curr_path = os.path.join(d_path,d_set)
@@ -217,8 +225,10 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums):
                 points_ud = undistort.undistort(points) # High resolution (32-layer)
                 points_lr_ud = undistort.undistort(points_lr) # Low resolution (8-layer)
 
-                im_lidar = points_to_image(points_ud,(im_height,im_width))
-                im_lidar_lr = points_to_image(points_lr_ud,(im_height,im_width))
+                im_lidar,im_mask = points_to_image(points_ud,(im_height,im_width))
+                im_lidar_lr,im_mask_lr = points_to_image(points_lr_ud,(im_height,im_width))
+
+                im_inpaint = cv2.inpaint(im_lidar,im_mask,3,cv2.INPAINT_TELEA)
 
                 if name_set == 'train':
                     list_pidx,list_pidx_lr,list_pinit = get_patch_idx(
@@ -230,12 +240,15 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums):
                         p_name = '{}_{}_{}'.format(fname,cam_num,i)
                         im_path = os.path.join(hr_path_im,p_name+'.png')
                         im_path_lr = os.path.join(lr_path_im,p_name+'.png')
+                        im_path_ip = os.path.join(ip_path_im,p_name+'.png')
                                                                     
                         x_init,y_init = list_pinit[i]
                         cv2.imwrite(im_path,
                                     im_lidar[y_init:y_init+p_size,x_init:x_init+p_size])
                         cv2.imwrite(im_path_lr,
                                     im_lidar_lr[y_init:y_init+p_size,x_init:x_init+p_size])
+                        cv2.imwrite(im_path_ip,
+                                    im_inpaint[y_init:y_init+p_size,x_init:x_init+p_size])
 
                         # Save Points
                         pt_path = os.path.join(hr_path_pt,p_name+'.pkl')
@@ -249,8 +262,10 @@ def gen_data(d_path,list_date,n_step,n_init,name_set,p_size,cam_nums):
                     p_name = '{}_{}'.format(fname,cam_num,i)
                     im_path = os.path.join(hr_path_im,p_name+'.png')
                     im_path_lr = os.path.join(lr_path_im,p_name+'.png')
+                    im_path_ip = os.path.join(ip_path_im,p_name+'.png')
                     cv2.imwrite(im_path,im_lidar)
                     cv2.imwrite(im_path_lr,im_lidar_lr)
+                    cv2.imwrite(im_path_ip,im_inpaint)
 
                     pt_path = os.path.join(hr_path_pt,p_name+'.pkl')
                     pt_path_lr = os.path.join(lr_path_pt,p_name+'.pkl')
@@ -374,11 +389,11 @@ def main(args):
     
     # ----------- Train Data ----------------
     print "... Generating Train Data"
-    gen_data(d_path,list_train,n_step,n_init,'train',p_size,cam_nums)
+    gen_data(d_path,list_train,n_step,n_init,'train',p_size,cam_nums,args.is_inpaint)
 
     # ----------- Test Data ----------------
     print "... Generating Test Data"
-    gen_data(d_path,list_train,n_step,n_init,'test',p_size,cam_nums)
+    gen_data(d_path,list_train,n_step,n_init,'test',p_size,cam_nums,args.is_inpaint)
 
     return 0
 
